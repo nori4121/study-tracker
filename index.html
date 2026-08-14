@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学習時間 集計ツール</title>
+<style>
+  :root{
+    --paper:#F8F7F4; --surface:#FFFFFF; --panel:#FBFAF7;
+    --ink:#20232A; --ink-soft:#5F5A54; --ink-faint:#9B948B;
+    --accent:#3F6DB5; --accent-soft:#E8EFF8;
+    --border:#E6E2DA; --border-soft:#EFEBE3;
+    --danger:#B4472F;
+    --track:#EDEAE3;
+    --c1:#3F6DB5; --c2:#1D9E75; --c3:#D8724F; --c4:#8A5CC0; --c5:#B58A2E; --c6:#4AA5C4; --c7:#C0567F; --c8:#6E7480;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --paper:#17181A; --surface:#212327; --panel:#1D1F22;
+    --ink:#ECE8E1; --ink-soft:#ABA49B; --ink-faint:#7C766D;
+    --accent:#6E9BDC; --accent-soft:#22303F;
+    --border:#33353A; --border-soft:#2B2D31;
+    --danger:#E08a6b;
+    --track:#2C2E33;
+    --c1:#6E9BDC; --c2:#5FC79E; --c3:#E8956F; --c4:#B08CE0; --c5:#D6B25A; --c6:#6FC4DE; --c7:#DE86A6; --c8:#9AA0AC;
+  }}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"BIZ UDPGothic","Yu Gothic UI","Hiragino Kaku Gothic ProN","Noto Sans CJK JP","Noto Sans JP",-apple-system,"Segoe UI",sans-serif;
+    background:var(--paper);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased;
+    padding:20px 16px 90px;max-width:820px;margin:0 auto;
+  }
+  h1{font-size:20px;font-weight:600;letter-spacing:.02em;margin:0 0 2px}
+  .sub{color:var(--ink-soft);font-size:12.5px;margin:0 0 16px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .spacer{flex:1}
+  button,select{font-family:inherit;font-size:13px;color:var(--ink)}
+  .btn{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 13px;cursor:pointer;transition:.12s}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 9px}
+  .status{font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .status.on{background:var(--accent-soft);color:var(--accent)}
+  .status.off{background:var(--panel);color:var(--ink-faint);border:1px solid var(--border)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .card h2{font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--ink-soft);margin:0 0 12px;text-transform:uppercase}
+  .targets{display:flex;flex-wrap:wrap;gap:10px}
+  .tgt{flex:1;min-width:150px;border:1px solid var(--border);border-radius:10px;padding:11px 13px;background:var(--panel)}
+  .tgt .name{font-size:12.5px;color:var(--ink-soft)}
+  .tgt .days{font-size:26px;font-weight:600;line-height:1.2}
+  .tgt .days small{font-size:13px;font-weight:400;color:var(--ink-faint)}
+  .tgt .date{font-size:11.5px;color:var(--ink-faint)}
+  .tgt .past{color:var(--danger)}
+  .kpis{display:flex;flex-wrap:wrap;gap:10px}
+  .kpi{flex:1;min-width:110px;border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;background:var(--panel)}
+  .kpi .v{font-size:22px;font-weight:600}
+  .kpi .l{font-size:11.5px;color:var(--ink-faint)}
+  .bucket{margin:9px 0}
+  .bucket .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px}
+  .bucket .top .t{font-weight:500}
+  .bucket .top .v{color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .track{height:12px;background:var(--track);border-radius:6px;overflow:hidden}
+  .fill{height:100%;border-radius:6px}
+  .daily{display:flex;align-items:flex-end;gap:3px;height:150px;padding-top:6px;overflow-x:auto}
+  .day{flex:1;min-width:12px;display:flex;flex-direction:column-reverse;justify-content:flex-start;height:100%;position:relative}
+  .day .seg{width:100%}
+  .day .lab{position:absolute;bottom:-18px;left:0;right:0;text-align:center;font-size:9px;color:var(--ink-faint);white-space:nowrap}
+  .daily-wrap{padding-bottom:22px}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:11.5px;color:var(--ink-soft)}
+  .legend .lg{display:flex;align-items:center;gap:5px}
+  .legend .dot{width:9px;height:9px;border-radius:3px}
+  .empty{color:var(--ink-faint);font-size:13px;text-align:center;padding:24px 0}
+  .foot{margin-top:24px;font-size:11px;color:var(--ink-faint);text-align:right}
+  .banner{background:var(--panel);color:var(--ink-soft);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12.5px;margin:12px 0}
+</style>
+</head>
+<body>
+
+<div class="row">
+  <div>
+    <h1>学習時間 集計ツール</h1>
+    <p class="sub">タイトル末尾が <b id="tagLabel">#集計対象</b> の予定を全カレンダーから拾い、名前ごとに時間を合算します。</p>
+  </div>
+  <div class="spacer"></div>
+  <span id="statusPill" class="status off">未接続</span>
+</div>
+
+<div class="row" style="margin:6px 0 2px">
+  <button id="connectBtn" class="btn primary">Googleに接続</button>
+  <button id="reloadBtn" class="btn">再読込</button>
+  <div class="spacer"></div>
+  <label style="font-size:12px;color:var(--ink-soft)">期間</label>
+  <select id="rangeSel">
+    <option value="week">今週</option>
+    <option value="month" selected>今月</option>
+    <option value="30d">直近30日</option>
+    <option value="all">全期間</option>
+  </select>
+</div>
+
+<div id="banner" class="banner" style="display:none"></div>
+
+<div class="card">
+  <h2>ターゲットまで</h2>
+  <div id="targets" class="targets"></div>
+</div>
+
+<div class="card">
+  <h2>この期間のサマリ</h2>
+  <div id="kpis" class="kpis"></div>
+</div>
+
+<div class="card">
+  <h2>バケツ別 累計時間</h2>
+  <div id="buckets"></div>
+</div>
+
+<div class="card">
+  <h2>累積 学習時間（積み上げ）</h2>
+  <div id="areaWrap"></div>
+  <div id="areaLegend" class="legend"></div>
+</div>
+
+<div class="card">
+  <h2>日別 学習時間</h2>
+  <div id="dailyWrap" class="daily-wrap"><div class="daily" id="daily"></div></div>
+  <div id="legend" class="legend"></div>
+</div>
+
+<p class="foot">build b04 ／ 設定はファイル冒頭の定数を編集</p>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+"use strict";
+
+/* =========================================================
+   設定 — ここだけ書き換える（ローカル保存は一切しない）
+   ---------------------------------------------------------
+   CLIENT_ID : GoogleのOAuthクライアントID。空ならサンプル表示。
+   TAG       : タイトル末尾に付ける集計目印。
+   TARGETS   : 試験名と日付（残り日数を表示するだけ）。
+   ========================================================= */
+const CLIENT_ID = "162155904085-ud13pisfjodgim2t19q9n2us70ekc9n4.apps.googleusercontent.com";  // calendar-app流用（ウェブ種別）
+const TAG = "#集計対象";
+const TARGETS = [
+  {name:"TOEIC",     date:"2026-12-06"},
+  {name:"CIA Part1", date:"2026-12-31"},
+];
+/* ========================================================= */
+
+const SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
+
+let tokenClient = null;
+let accessToken = "";        // メモリのみ。閉じたら消える＝毎回ログイン
+let tokenExp = 0;
+let events = [];             // 取得イベント（メモリのみ、ため込まない）
+let usingMock = false;
+
+// ---------- タグ判定・バケツ抽出 ----------
+function parseBucket(title, tag){
+  if(!title) return null;
+  const t = String(title).replace(/＃/g,"#").replace(/　/g," ").trim();
+  const normTag = String(tag||"#集計対象").replace(/＃/g,"#").replace(/　/g," ").trim();
+  if(!t.endsWith(normTag)) return null;
+  let name = t.slice(0, t.length - normTag.length).replace(/[\s#]+$/,"").trim();
+  return name || "(名称なし)";
+}
+
+// ---------- 集計 ----------
+function minutesOf(ev){
+  if(!ev.start || !ev.start.dateTime || !ev.end || !ev.end.dateTime) return 0;
+  const s = new Date(ev.start.dateTime).getTime();
+  const e = new Date(ev.end.dateTime).getTime();
+  const m = Math.round((e - s)/60000);
+  return m > 0 ? m : 0;
+}
+function keyOf(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function aggregate(evs, tag, from, to){
+  const buckets = {}, perDay = {}, daysSet = new Set();
+  let total=0, sessions=0;
+  for(const ev of evs){
+    const name = parseBucket(ev.summary, tag);
+    if(!name) continue;
+    const m = minutesOf(ev);
+    if(m<=0) continue;
+    const t = new Date(ev.start.dateTime).getTime();
+    if(from && t < from.getTime()) continue;
+    if(to && t >= to.getTime()) continue;
+    buckets[name] = (buckets[name]||0) + m;
+    const dk = keyOf(new Date(ev.start.dateTime));
+    (perDay[dk] = perDay[dk]||{})[name] = (perDay[dk][name]||0)+m;
+    daysSet.add(dk);
+    total += m; sessions++;
+  }
+  return {buckets, perDay, total, sessions, activeDays:daysSet.size};
+}
+
+// ---------- 期間 ----------
+function rangeBounds(kind){
+  const now = new Date();
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
+  let from;
+  if(kind==="week"){ const wd=(now.getDay()+6)%7; from = new Date(now.getFullYear(), now.getMonth(), now.getDate()-wd); }
+  else if(kind==="month"){ from = new Date(now.getFullYear(), now.getMonth(), 1); }
+  else if(kind==="30d"){ from = new Date(now.getFullYear(), now.getMonth(), now.getDate()-29); }
+  else { from = new Date(now.getFullYear()-3, 0, 1); }
+  return {from, to};
+}
+
+// ---------- 表示ヘルパ ----------
+function fmt(min){
+  const h=Math.floor(min/60), m=min%60;
+  if(h>0&&m>0) return `${h}時間${m}分`;
+  if(h>0) return `${h}時間`;
+  return `${m}分`;
+}
+function colorFor(i){ return `var(${COLORS[i%COLORS.length]})`; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+// ---------- レンダリング ----------
+function render(){
+  const {from,to} = rangeBounds(document.getElementById("rangeSel").value);
+  const agg = aggregate(events, TAG, from, to);
+  renderKpis(agg);
+  renderBuckets(agg);
+  renderArea(agg, from, to);
+  renderDaily(agg, from, to);
+}
+function renderTargets(){
+  const el = document.getElementById("targets");
+  if(!TARGETS || TARGETS.length===0){ el.innerHTML = `<div class="empty" style="flex:1">ターゲット未設定（ファイル冒頭の TARGETS を編集）。</div>`; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  el.innerHTML = TARGETS.map(t=>{
+    const d = new Date(t.date+"T00:00:00");
+    const diff = Math.round((d - today)/86400000);
+    const past = diff<0;
+    return `<div class="tgt">
+      <div class="name">${escapeHtml(t.name)}</div>
+      <div class="days ${past?'past':''}">${past?"経過":"あと"} <span>${Math.abs(diff)}</span><small>日</small></div>
+      <div class="date">${escapeHtml(t.date)}</div></div>`;
+  }).join("");
+}
+function renderKpis(agg){
+  const avg = agg.activeDays>0 ? Math.round(agg.total/agg.activeDays) : 0;
+  document.getElementById("kpis").innerHTML = `
+    <div class="kpi"><div class="v">${fmt(agg.total)}</div><div class="l">合計学習時間</div></div>
+    <div class="kpi"><div class="v">${agg.activeDays}<small style="font-size:12px">日</small></div><div class="l">学習した日数</div></div>
+    <div class="kpi"><div class="v">${agg.sessions}<small style="font-size:12px">回</small></div><div class="l">セッション数</div></div>
+    <div class="kpi"><div class="v">${fmt(avg)}</div><div class="l">学習日あたり平均</div></div>`;
+}
+function renderBuckets(agg){
+  const el = document.getElementById("buckets");
+  const entries = Object.entries(agg.buckets).sort((a,b)=>b[1]-a[1]);
+  if(entries.length===0){ el.innerHTML = `<div class="empty">この期間に集計対象の予定がありません。</div>`; return; }
+  const max = entries[0][1];
+  el.innerHTML = entries.map(([name,min],i)=>`
+    <div class="bucket">
+      <div class="top"><span class="t">${escapeHtml(name)}</span><span class="v">${fmt(min)}</span></div>
+      <div class="track"><div class="fill" style="width:${Math.max(3,Math.round(min/max*100))}%;background:${colorFor(i)}"></div></div>
+    </div>`).join("");
+}
+function renderArea(agg, from, to){
+  const wrap=document.getElementById("areaWrap");
+  const legendEl=document.getElementById("areaLegend");
+  const days=[]; const cur=new Date(from); const end=new Date(to); let g=0;
+  while(cur<end && g<1200){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); g++; }
+  const order=Object.entries(agg.buckets).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  const n=days.length;
+  if(order.length===0 || n<2){ wrap.innerHTML=`<div class="empty">累積を表示するデータが足りません。</div>`; legendEl.innerHTML=""; return; }
+  const colorMap={}; order.forEach((nm,i)=>colorMap[nm]=colorFor(i));
+  // 日ごと・バケツごとの累積（前日までの積み上げ）
+  const cum={}; const run={}; order.forEach(nm=>{cum[nm]=new Array(n).fill(0); run[nm]=0;});
+  for(let i=0;i<n;i++){
+    const rec=agg.perDay[keyOf(days[i])]||{};
+    for(const nm of order){ run[nm]+=rec[nm]||0; cum[nm][i]=run[nm]; }
+  }
+  // 積み上げの上端ライン top[k][i]
+  const top=[];
+  for(let k=0;k<order.length;k++){ top[k]=new Array(n); for(let i=0;i<n;i++){ top[k][i]=(k>0?top[k-1][i]:0)+cum[order[k]][i]; } }
+  const maxV=Math.max(1, top[order.length-1][n-1]);
+  const W=760,H=220,L=46,R=10,T=10,B=22, pw=W-L-R, ph=H-T-B;
+  const X=i=> L + (n<=1?0: i/(n-1)*pw);
+  const Y=v=> T + ph - (v/maxV)*ph;
+  let grid="", ylab="";
+  const ticks=4;
+  for(let t=0;t<=ticks;t++){
+    const v=maxV*t/ticks, y=Y(v);
+    grid+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/>`;
+    ylab+=`<text x="${L-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--ink-faint)">${(v/60).toFixed(1)}h</text>`;
+  }
+  let bands="", lines="";
+  for(let k=order.length-1;k>=0;k--){
+    const nm=order[k];
+    let d=`M ${X(0).toFixed(1)} ${Y(top[k][0]).toFixed(1)}`;
+    for(let i=1;i<n;i++){ d+=` L ${X(i).toFixed(1)} ${Y(top[k][i]).toFixed(1)}`; }
+    for(let i=n-1;i>=0;i--){ const b=(k>0?top[k-1][i]:0); d+=` L ${X(i).toFixed(1)} ${Y(b).toFixed(1)}`; }
+    d+=" Z";
+    bands+=`<path d="${d}" fill="${colorMap[nm]}" fill-opacity="0.5"/>`;
+    let l=`M ${X(0).toFixed(1)} ${Y(top[k][0]).toFixed(1)}`;
+    for(let i=1;i<n;i++){ l+=` L ${X(i).toFixed(1)} ${Y(top[k][i]).toFixed(1)}`; }
+    lines+=`<path d="${l}" fill="none" stroke="${colorMap[nm]}" stroke-width="1.6"/>`;
+  }
+  let xlab="";
+  const labN=Math.min(6, n);
+  for(let s=0;s<labN;s++){
+    const i=Math.round(s/(labN-1)*(n-1));
+    const dd=days[i];
+    xlab+=`<text x="${X(i).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9" fill="var(--ink-faint)">${dd.getMonth()+1}/${dd.getDate()}</text>`;
+  }
+  wrap.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${grid}${bands}${lines}${ylab}${xlab}</svg>`;
+  legendEl.innerHTML = order.map(nm=>`<span class="lg"><span class="dot" style="background:${colorMap[nm]}"></span>${escapeHtml(nm)}</span>`).join("");
+}
+function renderDaily(agg, from, to){
+  const daily = document.getElementById("daily");
+  const legend = document.getElementById("legend");
+  const days=[]; const cur=new Date(from); const end=new Date(to); let guard=0;
+  while(cur<end && guard<400){ days.push(new Date(cur)); cur.setDate(cur.getDate()+1); guard++; }
+  const showDays = days.slice(-62);
+  const order = Object.entries(agg.buckets).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  const colorMap={}; order.forEach((n,i)=>colorMap[n]=colorFor(i));
+  let maxDay=1;
+  for(const d of showDays){ const rec=agg.perDay[keyOf(d)]||{}; const sum=Object.values(rec).reduce((a,b)=>a+b,0); if(sum>maxDay)maxDay=sum; }
+  daily.innerHTML = showDays.map(d=>{
+    const rec=agg.perDay[keyOf(d)]||{};
+    const segs=order.filter(n=>rec[n]).map(n=>`<div class="seg" style="height:${rec[n]/maxDay*100}%;background:${colorMap[n]}" title="${escapeHtml(n)} ${fmt(rec[n])}"></div>`).join("");
+    const showLab = showDays.length<=31 || d.getDate()===1 || d.getDate()%5===0;
+    return `<div class="day">${segs}<span class="lab">${showLab?(d.getMonth()+1)+'/'+d.getDate():''}</span></div>`;
+  }).join("");
+  if(order.length===0){ daily.innerHTML=`<div class="empty" style="width:100%">データがありません。</div>`; legend.innerHTML=""; return; }
+  legend.innerHTML = order.map(n=>`<span class="lg"><span class="dot" style="background:${colorMap[n]}"></span>${escapeHtml(n)}</span>`).join("");
+}
+
+// ---------- Google 接続（トークンはメモリのみ）----------
+function setStatus(on,text){ const p=document.getElementById("statusPill"); p.className="status "+(on?"on":"off"); p.textContent=text; }
+function showBanner(m){ const b=document.getElementById("banner"); b.textContent=m; b.style.display="block"; }
+function hideBanner(){ document.getElementById("banner").style.display="none"; }
+
+function ensureTokenClient(){
+  if(!CLIENT_ID || typeof google==="undefined" || !google.accounts) return false;
+  if(tokenClient) return true;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID, scope: SCOPE,
+    callback: (resp)=>{
+      if(resp && resp.access_token){
+        accessToken = resp.access_token;
+        tokenExp = Date.now() + (resp.expires_in||3600)*1000 - 60000;
+        loadEvents();
+      }
+    },
+  });
+  return true;
+}
+function connect(){
+  if(!CLIENT_ID){ showBanner("CLIENT_ID が未設定です。ファイル冒頭の定数に入れると実データに接続します（今はサンプル表示）。"); return; }
+  if(!ensureTokenClient()){ showBanner("Google認証の初期化に失敗しました。再読込してください。"); return; }
+  tokenClient.requestAccessToken({prompt: accessToken?"":"consent"});
+}
+
+async function fetchCalendars(token){
+  const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader&maxResults=250",{headers:{Authorization:"Bearer "+token}});
+  if(!res.ok) throw new Error("calendarList "+res.status);
+  return (await res.json()).items||[];
+}
+async function fetchEvents(token, calId, from, to){
+  let out=[], pageToken=null, guard=0;
+  do{
+    const u=new URL("https://www.googleapis.com/calendar/v3/calendars/"+encodeURIComponent(calId)+"/events");
+    u.searchParams.set("timeMin",from.toISOString());
+    u.searchParams.set("timeMax",to.toISOString());
+    u.searchParams.set("singleEvents","true");
+    u.searchParams.set("maxResults","2500");
+    u.searchParams.set("fields","items(summary,start,end),nextPageToken");
+    if(pageToken) u.searchParams.set("pageToken",pageToken);
+    const res=await fetch(u,{headers:{Authorization:"Bearer "+token}});
+    if(!res.ok) return out;
+    const data=await res.json();
+    out=out.concat(data.items||[]);
+    pageToken=data.nextPageToken; guard++;
+  }while(pageToken && guard<10);
+  return out;
+}
+async function loadEvents(){
+  if(!accessToken || Date.now()>tokenExp){ if(CLIENT_ID){ connect(); return; } loadMock(); return; }
+  usingMock=false; setStatus(true,"読込中…");
+  try{
+    const now=new Date();
+    const from=new Date(now.getFullYear()-3,0,1);
+    const to=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+    const cals=await fetchCalendars(accessToken);
+    let all=[];
+    for(const c of cals){ all=all.concat(await fetchEvents(accessToken,c.id,from,to)); }
+    events=all; setStatus(true,"接続中・"+cals.length+"カレンダー"); hideBanner(); render();
+  }catch(e){ setStatus(false,"未接続"); showBanner("読み込みに失敗しました。接続し直してください。（"+e.message+"）"); loadMock(); }
+}
+
+// ---------- モック（未接続時の見本）----------
+function loadMock(){
+  usingMock=true;
+  const names=["CIA Part1","CIA Part2","CIA Part3","TOEIC"];
+  const evs=[]; const now=new Date();
+  for(let i=0;i<60;i++){
+    if((i*7)%3===0) continue;
+    const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);
+    const pick=names[(i*3)%4];
+    const dur=15+((i*11)%4)*15;
+    const start=new Date(d); start.setHours(7,45,0,0);
+    const end=new Date(start.getTime()+dur*60000);
+    evs.push({summary:`${pick} ${TAG}`, start:{dateTime:start.toISOString()}, end:{dateTime:end.toISOString()}});
+  }
+  const s2=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1); s2.setHours(20,0,0,0);
+  evs.push({summary:"会議", start:{dateTime:s2.toISOString()}, end:{dateTime:new Date(s2.getTime()+3600000).toISOString()}});
+  evs.push({summary:`英語 #集計対象外`, start:{dateTime:s2.toISOString()}, end:{dateTime:new Date(s2.getTime()+3600000).toISOString()}});
+  events=evs; setStatus(false,"サンプル表示");
+  showBanner("サンプル（モック）表示中。ファイル冒頭に CLIENT_ID を入れて『Googleに接続』すると実データになります。");
+  render();
+}
+
+// ---------- 起動 ----------
+function boot(){
+  document.getElementById("tagLabel").textContent = TAG;
+  document.getElementById("connectBtn").onclick = connect;
+  document.getElementById("reloadBtn").onclick = ()=> usingMock ? loadMock() : loadEvents();
+  document.getElementById("rangeSel").onchange = render;
+  renderTargets();
+  loadMock();   // まずサンプルを表示。実接続は「Googleに接続」ボタンから。
+}
+window.addEventListener("load", boot);
+</script>
+</body>
+</html>
