@@ -201,7 +201,7 @@ const CIA_STORE_TITLE = "（学習集計アプリ・CIA進捗データ／消さ�
 /* ========================================================= */
 
 const SCOPE = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.appdata";  // カレンダー読取＋Driveアプリ専用領域に進捗保存
-const BUILD = "b08";  // 版（ヘッダーとフッターに表示）
+const BUILD = "b09";  // 版（ヘッダーとフッターに表示）
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
 
 let tokenClient = null;
@@ -405,8 +405,25 @@ function ensureTokenClient(){
         loadEvents();
       }
     },
+    error_callback: ()=>{ if(!accessToken) setStatus(false,"未接続"); },  // サイレント失敗/ポップアップ閉じ等
   });
   return true;
+}
+// GIS(google.accounts)の読み込みを待ってからコールバック（不可ならfail）
+function whenGisReady(cb, fail, tries){
+  tries = tries || 0;
+  if(window.google && google.accounts && google.accounts.oauth2){ cb(); return; }
+  if(tries > 40){ if(fail) fail(); return; }   // 最大約6秒待つ
+  setTimeout(()=>whenGisReady(cb, fail, tries+1), 150);
+}
+// 起動時：無操作でのトークン再取得を試みる（ログイン済み＆許可済みなら自動接続、不可なら未接続のまま）
+function silentConnect(){
+  if(!CLIENT_ID) return;
+  setStatus(false,"接続確認中…");
+  whenGisReady(
+    ()=>{ if(ensureTokenClient()){ try{ tokenClient.requestAccessToken({prompt:""}); }catch(e){ setStatus(false,"未接続"); } } else { setStatus(false,"未接続"); } },
+    ()=>{ setStatus(false,"未接続"); }
+  );
 }
 function connect(){
   if(!CLIENT_ID){ showBanner("CLIENT_ID が未設定です。ファイル冒頭の定数に入れると実データに接続します。"); return; }
@@ -543,7 +560,8 @@ function boot(){
   document.getElementById("reloadBtn").onclick = loadEvents;
   document.getElementById("rangeSel").onchange = render;
   renderTargets();
-  showEmpty();   // 未接続では空表示。実データは「Googleに接続」から。
+  showEmpty();       // まず未接続の空表示
+  silentConnect();   // 直後にサイレント再接続を試みる（成功すれば自動で実データ表示）
 }
 window.addEventListener("load", boot);
 </script>
