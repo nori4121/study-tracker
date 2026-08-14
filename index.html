@@ -170,7 +170,7 @@
   <table class="ctbl"><thead><tr><th>日付</th><th>章</th><th>周</th><th>到達%</th><th></th></tr></thead><tbody id="ciaLog"></tbody></table>
 </div>
 
-<p class="foot">build b07 ／ 設定はファイル冒頭の定数を編集</p>
+<p class="foot">build b08 ／ 設定はファイル冒頭の定数を編集</p>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
@@ -199,7 +199,7 @@ const CIA_PARTS = [
 const CIA_STORE_TITLE = "（学習集計アプリ・CIA進捗データ／消さないでください）";
 /* ========================================================= */
 
-const SCOPE = "https://www.googleapis.com/auth/calendar";  // 進捗を隠しイベントに読み書きするため（読み書き）
+const SCOPE = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.appdata";  // カレンダー読取＋Driveアプリ専用領域に進捗保存
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
 
 let tokenClient = null;
@@ -468,23 +468,27 @@ function ciaLatestPct(code,round){ const es=progLog.filter(x=>x.code===code&&x.r
 function partMinutes(bucket){ let m=0; for(const ev of events){ if(parseBucket(ev.summary,TAG)===bucket) m+=minutesOf(ev); } return m; }
 function upsertTodayCIA(code,round,pct){ const t=todayStr(); const e=progLog.find(x=>x.code===code&&x.round===round&&x.date===t); if(e) e.pct=pct; else progLog.push({date:t,code,round,pct}); }
 
+// 進捗は Drive の appDataFolder に cia-progress.json として保存（カレンダーには何も作らない）
+const PROG_FILE="cia-progress.json";
 async function loadProgress(token){
-  const u="https://www.googleapis.com/calendar/v3/calendars/primary/events?privateExtendedProperty="+encodeURIComponent("studytracker=cia-progress")+"&singleEvents=true&maxResults=5&fields=items(id,description)";
-  const res=await fetch(u,{headers:{Authorization:"Bearer "+token}});
-  if(!res.ok){ progStoreId=null; progLog=[]; return; }
-  const items=((await res.json()).items)||[];
-  if(items.length){ progStoreId=items[0].id; try{ progLog=JSON.parse(items[0].description||"[]")||[]; }catch(e){ progLog=[]; } }
-  else { progStoreId=null; progLog=[]; }
+  const q=encodeURIComponent("name = '"+PROG_FILE+"'");
+  const list=await fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q="+q+"&fields=files(id,name)",{headers:{Authorization:"Bearer "+token}});
+  if(!list.ok){ progStoreId=null; progLog=[]; return; }
+  const files=((await list.json()).files)||[];
+  if(!files.length){ progStoreId=null; progLog=[]; return; }
+  progStoreId=files[0].id;
+  const media=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(progStoreId)+"?alt=media",{headers:{Authorization:"Bearer "+token}});
+  if(!media.ok){ progLog=[]; return; }
+  try{ progLog=JSON.parse(await media.text())||[]; }catch(e){ progLog=[]; }
 }
 async function saveProgress(token){
-  const full={ summary:CIA_STORE_TITLE, start:{date:todayStr()}, end:{date:tomorrowStr()}, transparency:"transparent", extendedProperties:{private:{studytracker:"cia-progress"}}, description:JSON.stringify(progLog) };
-  let url, method, body;
-  if(progStoreId){ url="https://www.googleapis.com/calendar/v3/calendars/primary/events/"+encodeURIComponent(progStoreId); method="PATCH"; body={description:full.description}; }
-  else { url="https://www.googleapis.com/calendar/v3/calendars/primary/events"; method="POST"; body=full; }
-  const res=await fetch(url,{method,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!progStoreId){
+    const meta=await fetch("https://www.googleapis.com/drive/v3/files",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({name:PROG_FILE,parents:["appDataFolder"]})});
+    if(!meta.ok) throw new Error("create "+meta.status);
+    progStoreId=(await meta.json()).id;
+  }
+  const res=await fetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(progStoreId)+"?uploadType=media",{method:"PATCH",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(progLog)});
   if(!res.ok) throw new Error("save "+res.status);
-  const data=await res.json();
-  if(!progStoreId && data.id) progStoreId=data.id;
 }
 async function persistCIA(){
   if(!accessToken) return;
