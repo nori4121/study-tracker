@@ -130,7 +130,47 @@
   <div id="legend" class="legend"></div>
 </div>
 
-<p class="foot">build b06 ／ 設定はファイル冒頭の定数を編集</p>
+<style>
+  .cia-hint{font-size:11.5px;color:var(--ink-faint);margin:0 0 12px}
+  .cia-note{font-size:12.5px;color:var(--ink-faint);padding:14px 0}
+  #cia .parthdr{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:700;margin:14px 0 4px}
+  #cia .parthdr .pt{font-size:11px;color:var(--ink-soft);font-weight:600}
+  #cia .chrow{display:grid;grid-template-columns:140px 1fr auto;gap:12px;padding:9px 2px;border-top:1px solid var(--border-soft);align-items:center}
+  #cia .chname{font-size:12px}
+  #cia .rounds{display:flex;flex-direction:column;gap:4px}
+  #cia .rline{display:grid;grid-template-columns:50px 1fr 42px;gap:8px;align-items:center}
+  #cia .rlab{font-size:10.5px;color:var(--ink-faint)}
+  #cia .cbar{height:13px;background:var(--track);border-radius:7px;overflow:hidden}
+  #cia .cfill{height:100%;border-radius:7px}
+  #cia .cslider{width:100%;margin:0;height:13px}
+  #cia .rpct{font-size:10.5px;color:var(--ink-soft);text-align:right}
+  .nextr{background:var(--surface);color:var(--ink-soft);border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:11px;cursor:pointer;white-space:nowrap}
+  .nextr:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  .nextr:disabled{opacity:.38;cursor:not-allowed}
+  .ctbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .ctbl th,.ctbl td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border-soft)}
+  .ctbl th{color:var(--ink-faint);font-weight:600;font-size:11px}
+  .crd{display:inline-block;font-size:10.5px;font-weight:700;border-radius:5px;padding:1px 7px;color:#fff}
+  .ctbl .del{cursor:pointer;color:var(--ink-faint)}
+  .clegend{font-size:11px;color:var(--ink-soft);margin-top:10px;display:flex;gap:12px;flex-wrap:wrap}
+  .clegend .sw{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px}
+  .savemark{font-size:11px;color:#3F7A4F;margin-left:8px;opacity:0;transition:.2s}
+  .savemark.show{opacity:1}
+</style>
+
+<div class="card">
+  <h2>CIA 進捗（章 × 周）<span class="savemark" id="ciaSave"></span></h2>
+  <p class="cia-hint">各章の「今の周」のバーをドラッグ → 到達%を更新（今日の日付で自動保存）。次の周は今の周が100%で解禁。時間はPart合計。</p>
+  <div id="cia"></div>
+  <div class="clegend" id="ciaLegend"></div>
+</div>
+
+<div class="card">
+  <h2>CIA 記録ログ</h2>
+  <table class="ctbl"><thead><tr><th>日付</th><th>章</th><th>周</th><th>到達%</th><th></th></tr></thead><tbody id="ciaLog"></tbody></table>
+</div>
+
+<p class="foot">build b07 ／ 設定はファイル冒頭の定数を編集</p>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
@@ -149,9 +189,17 @@ const TARGETS = [
   {name:"TOEIC",     date:"2026-12-06"},
   {name:"CIA Part1", date:"2026-12-31"},
 ];
+/* CIA進捗：章立てと、Part合計時間を拾う時間ラベル(bucket)。
+   bucket は「タイマーのラベル名（#集計対象を除いた部分）」に一致させる。 */
+const CIA_PARTS = [
+  {p:1, name:"Part 1 内部監査の基礎", bucket:"CIA Part1", chs:["内部監査概論","独立性","倫理と気質","ガバナンス","リスク・マネジメント","コントロール","不正リスク"]},
+  {p:2, name:"Part 2 内部監査の実務", bucket:"CIA Part2", chs:["業務の計画","組織構造と行動","IT","会計とファイナンス","ビジネスプロセス","業務の実施","サンプリング","分析的手続","監督とコミュニケーション"]},
+  {p:3, name:"Part 3 ビジネス知識",   bucket:"CIA Part3", chs:["内部監査部の運営","内部監査の計画","部門の品質","結果とモニタリング"]},
+];
+const CIA_STORE_TITLE = "（学習集計アプリ・CIA進捗データ／消さないでください）";
 /* ========================================================= */
 
-const SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+const SCOPE = "https://www.googleapis.com/auth/calendar";  // 進捗を隠しイベントに読み書きするため（読み書き）
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
 
 let tokenClient = null;
@@ -159,6 +207,8 @@ let accessToken = "";        // メモリのみ。閉じたら消える＝毎回
 let tokenExp = 0;
 let events = [];             // 取得イベント（メモリのみ、ため込まない）
 let usingMock = false;
+let progLog = [];            // CIA進捗ログ [{date,code,round,pct}]（カレンダー隠しイベントから読込）
+let progStoreId = null;      // 隠しイベントのID
 
 // ---------- タグ判定・バケツ抽出 ----------
 function parseBucket(title, tag){
@@ -396,14 +446,86 @@ async function loadEvents(){
     let all=[];
     for(const c of cals){ all=all.concat(await fetchEvents(accessToken,c.id,from,to)); }
     events=all; setStatus(true,"接続中・"+cals.length+"カレンダー"); hideBanner(); render();
-  }catch(e){ setStatus(false,"未接続"); showBanner("読み込みに失敗しました。接続し直してください。（"+e.message+"）"); events=[]; render(); }
+    try{ await loadProgress(accessToken); }catch(e){}
+    renderCIA();
+  }catch(e){ setStatus(false,"未接続"); showBanner("読み込みに失敗しました。接続し直してください。（"+e.message+"）"); events=[]; render(); renderCIA(); }
 }
 
 // ---------- 未接続時の空表示（モックは出さない）----------
 function showEmpty(){
   events=[]; setStatus(false,"未接続");
   showBanner("「Googleに接続」を押すと、カレンダーの実績を集計して表示します。");
-  render();
+  render(); renderCIA();
+}
+
+// ================= CIA 進捗（章×周・到達%）=================
+function rColorCIA(r){ return `var(${COLORS[(r-1)%COLORS.length]})`; }
+function todayStr(){ return keyOf(new Date()); }
+function tomorrowStr(){ const d=new Date(); d.setDate(d.getDate()+1); return keyOf(d); }
+function ciaLabel(code){ const m=String(code).match(/^P(\d+)-(\d+)$/); if(!m) return code; const pt=CIA_PARTS.find(x=>x.p==+m[1]); const ch=pt&&pt.chs[+m[2]-1]; return ch?`P${m[1]}-${m[2]} ${ch}`:code; }
+function ciaCurrentRound(code){ const rs=progLog.filter(x=>x.code===code).map(x=>x.round); return rs.length?Math.max(...rs):1; }
+function ciaLatestPct(code,round){ const es=progLog.filter(x=>x.code===code&&x.round===round).sort((a,b)=>a.date<b.date?-1:1); return es.length?es[es.length-1].pct:0; }
+function partMinutes(bucket){ let m=0; for(const ev of events){ if(parseBucket(ev.summary,TAG)===bucket) m+=minutesOf(ev); } return m; }
+function upsertTodayCIA(code,round,pct){ const t=todayStr(); const e=progLog.find(x=>x.code===code&&x.round===round&&x.date===t); if(e) e.pct=pct; else progLog.push({date:t,code,round,pct}); }
+
+async function loadProgress(token){
+  const u="https://www.googleapis.com/calendar/v3/calendars/primary/events?privateExtendedProperty="+encodeURIComponent("studytracker=cia-progress")+"&singleEvents=true&maxResults=5&fields=items(id,description)";
+  const res=await fetch(u,{headers:{Authorization:"Bearer "+token}});
+  if(!res.ok){ progStoreId=null; progLog=[]; return; }
+  const items=((await res.json()).items)||[];
+  if(items.length){ progStoreId=items[0].id; try{ progLog=JSON.parse(items[0].description||"[]")||[]; }catch(e){ progLog=[]; } }
+  else { progStoreId=null; progLog=[]; }
+}
+async function saveProgress(token){
+  const full={ summary:CIA_STORE_TITLE, start:{date:todayStr()}, end:{date:tomorrowStr()}, transparency:"transparent", extendedProperties:{private:{studytracker:"cia-progress"}}, description:JSON.stringify(progLog) };
+  let url, method, body;
+  if(progStoreId){ url="https://www.googleapis.com/calendar/v3/calendars/primary/events/"+encodeURIComponent(progStoreId); method="PATCH"; body={description:full.description}; }
+  else { url="https://www.googleapis.com/calendar/v3/calendars/primary/events"; method="POST"; body=full; }
+  const res=await fetch(url,{method,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!res.ok) throw new Error("save "+res.status);
+  const data=await res.json();
+  if(!progStoreId && data.id) progStoreId=data.id;
+}
+async function persistCIA(){
+  if(!accessToken) return;
+  const s=document.getElementById("ciaSave");
+  try{ if(s){ s.textContent="保存中…"; s.classList.add("show"); } await saveProgress(accessToken); if(s){ s.textContent="✓ 保存しました"; setTimeout(()=>s.classList.remove("show"),1000); } }
+  catch(e){ if(s){ s.textContent="保存失敗"; } showBanner("進捗の保存に失敗しました（"+e.message+"）。"); }
+}
+
+function renderCIA(){
+  const el=document.getElementById("cia"); if(!el) return;
+  const leg=document.getElementById("ciaLegend"), logEl=document.getElementById("ciaLog");
+  const connected = !!accessToken && Date.now()<tokenExp;
+  if(!connected){ el.innerHTML=`<div class="cia-note">Googleに接続すると、章ごとの進捗（周回・到達%）を記録・編集できます。</div>`; if(leg) leg.innerHTML=""; if(logEl) logEl.innerHTML=""; return; }
+  let html="", maxR=1;
+  CIA_PARTS.forEach(pt=>{
+    const pmin=partMinutes(pt.bucket);
+    html+=`<div class="parthdr"><span style="color:${rColorCIA(1)}">${escapeHtml(pt.name)}</span><span class="pt">合計 ${pmin?fmt(pmin):"0"}</span></div>`;
+    pt.chs.forEach((c,i)=>{
+      const code=`P${pt.p}-${i+1}`, cr=ciaCurrentRound(code); if(cr>maxR) maxR=cr;
+      let rl="";
+      for(let k=1;k<=cr;k++){
+        const p=ciaLatestPct(code,k);
+        if(k<cr){ rl+=`<div class="rline"><span class="rlab">${k}周目</span><div class="cbar"><div class="cfill" style="width:${p}%;background:${rColorCIA(k)}"></div></div><span class="rpct">${p}%</span></div>`; }
+        else { rl+=`<div class="rline"><span class="rlab">${k}周目</span><input type="range" class="cslider" min="0" max="100" step="5" value="${p}" data-code="${code}" data-round="${k}" style="accent-color:${rColorCIA(k)}"><span class="rpct" id="cpct-${code}-${k}">${p}%</span></div>`; }
+      }
+      const canNext=ciaLatestPct(code,cr)===100;
+      html+=`<div class="chrow"><div class="chname">${escapeHtml(c)}</div><div class="rounds">${rl}</div><button class="nextr" data-code="${code}" ${canNext?'':'disabled'} title="${canNext?'次の周へ':'今の周を100%にすると進めます'}">次の周 ▸</button></div>`;
+    });
+  });
+  el.innerHTML=html;
+  if(leg){ let lg=""; for(let r=1;r<=Math.max(3,maxR);r++) lg+=`<span><span class="sw" style="background:${rColorCIA(r)}"></span>${r}周目</span>`; leg.innerHTML=lg; }
+  if(logEl){ logEl.innerHTML=progLog.map((r,idx)=>({...r,_i:idx})).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).map(r=>`<tr><td>${escapeHtml(String(r.date).slice(5))}</td><td>${escapeHtml(ciaLabel(r.code))}</td><td><span class="crd" style="background:${rColorCIA(r.round)}">${r.round}周目</span></td><td>${r.pct}%</td><td class="del" data-i="${r._i}">✕</td></tr>`).join(""); }
+  bindCIA();
+}
+function bindCIA(){
+  document.querySelectorAll("#cia .cslider").forEach(sl=>{
+    sl.addEventListener("input",()=>{ const e=document.getElementById("cpct-"+sl.dataset.code+"-"+sl.dataset.round); if(e) e.textContent=sl.value+"%"; });
+    sl.addEventListener("change",async ()=>{ upsertTodayCIA(sl.dataset.code,+sl.dataset.round,Math.max(0,Math.min(100,+sl.value||0))); await persistCIA(); renderCIA(); });
+  });
+  document.querySelectorAll("#cia .nextr").forEach(b=>b.addEventListener("click",async ()=>{ const code=b.dataset.code, cr=ciaCurrentRound(code); progLog.push({date:todayStr(),code,round:cr+1,pct:0}); await persistCIA(); renderCIA(); }));
+  document.querySelectorAll("#ciaLog .del").forEach(d=>d.addEventListener("click",async ()=>{ progLog.splice(+d.dataset.i,1); await persistCIA(); renderCIA(); }));
 }
 
 // ---------- 起動 ----------
