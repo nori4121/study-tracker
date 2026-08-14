@@ -85,6 +85,7 @@
     <p class="sub">タイトル末尾が <b id="tagLabel">#集計対象</b> の予定を全カレンダーから拾い、名前ごとに時間を合算します。</p>
   </div>
   <div class="spacer"></div>
+  <span id="verBadge" style="font-size:11px;color:var(--ink-faint);align-self:center;margin-right:10px"></span>
   <span id="statusPill" class="status off">未接続</span>
 </div>
 
@@ -170,7 +171,7 @@
   <table class="ctbl"><thead><tr><th>日付</th><th>章</th><th>周</th><th>到達%</th><th></th></tr></thead><tbody id="ciaLog"></tbody></table>
 </div>
 
-<p class="foot">build b08 ／ 設定はファイル冒頭の定数を編集</p>
+<p class="foot" id="foot"></p>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
@@ -200,6 +201,7 @@ const CIA_STORE_TITLE = "（学習集計アプリ・CIA進捗データ／消さ�
 /* ========================================================= */
 
 const SCOPE = "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.appdata";  // カレンダー読取＋Driveアプリ専用領域に進捗保存
+const BUILD = "b08";  // 版（ヘッダーとフッターに表示）
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
 
 let tokenClient = null;
@@ -534,6 +536,8 @@ function bindCIA(){
 
 // ---------- 起動 ----------
 function boot(){
+  document.getElementById("verBadge").textContent = "build "+BUILD;
+  document.getElementById("foot").textContent = "build "+BUILD+" ／ 設定はファイル冒頭の定数を編集";
   document.getElementById("tagLabel").textContent = TAG;
   document.getElementById("connectBtn").onclick = connect;
   document.getElementById("reloadBtn").onclick = loadEvents;
