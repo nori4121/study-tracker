@@ -130,7 +130,7 @@
   <div id="legend" class="legend"></div>
 </div>
 
-<p class="foot">build b05 ／ 設定はファイル冒頭の定数を編集</p>
+<p class="foot">build b06 ／ 設定はファイル冒頭の定数を編集</p>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
@@ -357,7 +357,7 @@ function ensureTokenClient(){
   return true;
 }
 function connect(){
-  if(!CLIENT_ID){ showBanner("CLIENT_ID が未設定です。ファイル冒頭の定数に入れると実データに接続します（今はサンプル表示）。"); return; }
+  if(!CLIENT_ID){ showBanner("CLIENT_ID が未設定です。ファイル冒頭の定数に入れると実データに接続します。"); return; }
   if(!ensureTokenClient()){ showBanner("Google認証の初期化に失敗しました。再読込してください。"); return; }
   tokenClient.requestAccessToken({prompt: accessToken?"":"consent"});
 }
@@ -386,8 +386,8 @@ async function fetchEvents(token, calId, from, to){
   return out;
 }
 async function loadEvents(){
-  if(!accessToken || Date.now()>tokenExp){ if(CLIENT_ID){ connect(); return; } loadMock(); return; }
-  usingMock=false; setStatus(true,"読込中…");
+  if(!accessToken || Date.now()>tokenExp){ if(CLIENT_ID){ connect(); return; } showEmpty(); return; }
+  setStatus(true,"読込中…");
   try{
     const now=new Date();
     const from=new Date(now.getFullYear()-3,0,1);
@@ -396,28 +396,13 @@ async function loadEvents(){
     let all=[];
     for(const c of cals){ all=all.concat(await fetchEvents(accessToken,c.id,from,to)); }
     events=all; setStatus(true,"接続中・"+cals.length+"カレンダー"); hideBanner(); render();
-  }catch(e){ setStatus(false,"未接続"); showBanner("読み込みに失敗しました。接続し直してください。（"+e.message+"）"); loadMock(); }
+  }catch(e){ setStatus(false,"未接続"); showBanner("読み込みに失敗しました。接続し直してください。（"+e.message+"）"); events=[]; render(); }
 }
 
-// ---------- モック（未接続時の見本）----------
-function loadMock(){
-  usingMock=true;
-  const names=["CIA Part1","CIA Part2","CIA Part3","TOEIC"];
-  const evs=[]; const now=new Date();
-  for(let i=0;i<60;i++){
-    if((i*7)%3===0) continue;
-    const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);
-    const pick=names[(i*3)%4];
-    const dur=15+((i*11)%4)*15;
-    const start=new Date(d); start.setHours(7,45,0,0);
-    const end=new Date(start.getTime()+dur*60000);
-    evs.push({summary:`${pick} ${TAG}`, start:{dateTime:start.toISOString()}, end:{dateTime:end.toISOString()}});
-  }
-  const s2=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1); s2.setHours(20,0,0,0);
-  evs.push({summary:"会議", start:{dateTime:s2.toISOString()}, end:{dateTime:new Date(s2.getTime()+3600000).toISOString()}});
-  evs.push({summary:`英語 #集計対象外`, start:{dateTime:s2.toISOString()}, end:{dateTime:new Date(s2.getTime()+3600000).toISOString()}});
-  events=evs; setStatus(false,"サンプル表示");
-  showBanner("サンプル（モック）表示中。ファイル冒頭に CLIENT_ID を入れて『Googleに接続』すると実データになります。");
+// ---------- 未接続時の空表示（モックは出さない）----------
+function showEmpty(){
+  events=[]; setStatus(false,"未接続");
+  showBanner("「Googleに接続」を押すと、カレンダーの実績を集計して表示します。");
   render();
 }
 
@@ -425,10 +410,10 @@ function loadMock(){
 function boot(){
   document.getElementById("tagLabel").textContent = TAG;
   document.getElementById("connectBtn").onclick = connect;
-  document.getElementById("reloadBtn").onclick = ()=> usingMock ? loadMock() : loadEvents();
+  document.getElementById("reloadBtn").onclick = loadEvents;
   document.getElementById("rangeSel").onchange = render;
   renderTargets();
-  loadMock();   // まずサンプルを表示。実接続は「Googleに接続」ボタンから。
+  showEmpty();   // 未接続では空表示。実データは「Googleに接続」から。
 }
 window.addEventListener("load", boot);
 </script>
